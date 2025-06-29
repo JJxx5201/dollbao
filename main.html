@@ -1,0 +1,1711 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>逗寶會員標籤平台 (樹狀結構升級版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; height: 300px; max-height: 35vh; }
+        @media (min-width: 768px) { .chart-container { height: 320px; } }
+        /* NEW: Specific style for the larger strategy map chart */
+        #strategy-section .chart-container { height: 70vh; min-height: 650px; max-height: 800px; max-width: none; }
+        .nav-btn { transition: all 0.3s ease; }
+        .nav-btn.active { background-color: #0d9488; color: white; }
+        .nav-btn:not(.active):hover { background-color: #f0fdfa; }
+        .tag { display: inline-block; background-color: #ccfbf1; color: #134e4a; border-radius: 9999px; padding: 4px 12px; font-size: 0.8rem; font-weight: 500; margin: 2px; cursor: default;}
+        .tag-remove { margin-left: 4px; cursor: pointer; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .filter-select {
+            width: 100%;
+            padding: 0.5rem 2.5rem 0.5rem 0.75rem; /* pl-3 pr-10 py-2 */
+            font-size: 0.875rem; /* sm:text-sm */
+            line-height: 1.25rem;
+            border-width: 1px;
+            border-color: #d1d5db; /* border-gray-300 */
+            border-radius: 0.375rem; /* rounded-md */
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+        .filter-select:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            border-color: #0d9488; /* focus:border-teal-500 */
+            box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.5); /* focus:ring-teal-500 with opacity */
+        }
+        /* Custom modal styles */
+        .modal-overlay {
+            position: fixed; inset: 0; background-color: rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center; z-index: 50;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        .modal-content {
+            background-color: white; padding: 2rem; border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            width: 90%; max-width: 600px; /* Increased max-width for prompt */
+            transform: scale(0.95); transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+
+        /* --- NEW: Tag Tree Styles --- */
+        .tree, .tree ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .tree-item > ul {
+            padding-left: 2em;
+            border-left: 1px dashed #d1d5db; /* border-gray-300 */
+        }
+        .tree-category-header {
+            font-weight: 600; /* font-semibold */
+            cursor: pointer;
+            padding: 0.5em 0.5em;
+            border-radius: 0.375rem; /* rounded-md */
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+        }
+        .tree-category-header:hover {
+            background-color: #f0fdfa; /* teal-50 */
+        }
+        .tree-category-header .icon {
+            margin-right: 0.5em;
+        }
+        .tree-category-header .toggle-icon {
+            margin-right: 0.5em;
+            display: inline-block;
+            transition: transform 0.2s ease-in-out;
+            width: 1em;
+            height: 1em;
+        }
+        .tree-category-header.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+        .tree-tags-container {
+            padding-left: 1em; /* Indent tags under category */
+            overflow: hidden;
+            max-height: 2000px; /* Large value for smooth animation */
+            transition: max-height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tree-tags-container.collapsed {
+            max-height: 0;
+        }
+        .tree-tag-item {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75em 0.5em;
+            border-radius: 0.25rem;
+            border-bottom: 1px solid #f1f5f9; /* slate-100 */
+        }
+        .tree-tag-item:last-child {
+            border-bottom: none;
+        }
+        .tree-tag-item:hover {
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .tree-tag-info {
+            display: flex;
+            align-items: center;
+            gap: 1em;
+            flex-grow: 1;
+        }
+        .tree-tag-name {
+            color: #134e4a; /* color: #134e4a; */
+            background-color: #ccfbf1; /* bg-teal-100 */
+            border-radius: 9999px;
+            padding: 4px 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .tree-tag-details {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.8rem;
+            color: #64748b; /* text-slate-500 */
+        }
+        .tree-tag-actions {
+            flex-shrink: 0;
+            margin-left: 1rem;
+        }
+
+    </style>
+</head>
+<body class="bg-[#f8fafc]">
+
+    <div class="min-h-screen flex flex-col">
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <span class="text-2xl font-bold text-teal-700">逗寶會員標籤平台</span>
+                    </div>
+                    <nav class="hidden md:flex space-x-2">
+                        <button data-tab="dashboard" class="nav-btn px-3 py-2 text-sm font-medium text-gray-700 rounded-md active">📊 總覽</button>
+                        <button data-tab="segmentation" class="nav-btn px-3 py-2 text-sm font-medium text-gray-700 rounded-md">👥 顧客探索與分群</button>
+                        <button data-tab="management" class="nav-btn px-3 py-2 text-sm font-medium text-gray-700 rounded-md">🌳 標籤管理</button>
+                        <button data-tab="prediction" class="nav-btn px-3 py-2 text-sm font-medium text-gray-700 rounded-md">🔮 預測分析</button>
+                        <button data-tab="strategy" class="nav-btn px-3 py-2 text-sm font-medium text-gray-700 rounded-md">🗺️ 策略地圖</button>
+                    </nav>
+                </div>
+                <div class="md:hidden pb-4">
+                     <nav class="flex flex-wrap gap-2">
+                          <button data-tab="dashboard" class="nav-btn flex-1 px-3 py-2 text-sm font-medium text-gray-700 rounded-md active">📊 總覽</button>
+                          <button data-tab="segmentation" class="nav-btn flex-1 px-3 py-2 text-sm font-medium text-gray-700 rounded-md">👥 分群</button>
+                          <button data-tab="management" class="nav-btn flex-1 px-3 py-2 text-sm font-medium text-gray-700 rounded-md">🌳 管理</button>
+                          <button data-tab="prediction" class="nav-btn flex-1 px-3 py-2 text-sm font-medium text-gray-700 rounded-md">🔮 預測</button>
+                          <button data-tab="strategy" class="nav-btn flex-1 px-3 py-2 text-sm font-medium text-gray-700 rounded-md">🗺️ 地圖</button>
+                     </nav>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow container mx-auto p-4 sm:p-6 lg:p-8">
+            <div id="dashboard-section" class="tab-content active">
+                <div class="prose max-w-full mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">營運儀表板總覽</h2>
+                    <p class="text-gray-600">此儀表板提供逗寶顧客群的即時概覽，聚焦核心客群（如新世代媽咪）的關鍵指標與人口統計特徵。透過互動式圖表，快速掌握顧客輪廓，為精準行銷與產品策略（如時尚育兒精品）提供數據支持。將滑鼠懸停在圖表上可查看詳細數據。</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <div class="bg-white p-6 rounded-lg shadow-md flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">總顧客數</p>
+                            <p id="total-members-stat" class="text-3xl font-bold text-gray-900">0</p>
+                        </div>
+                        <div class="bg-teal-100 text-teal-600 p-3 rounded-full">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">標籤總數</p>
+                            <p id="total-tags-stat" class="text-3xl font-bold text-gray-900">0</p>
+                        </div>
+                         <div class="bg-sky-100 text-sky-600 p-3 rounded-full">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" /></svg>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">最熱門標籤</p>
+                            <p id="top-tag-stat" class="text-xl font-bold text-gray-900">N/A</p>
+                        </div>
+                         <div class="bg-amber-100 text-amber-600 p-3 rounded-full">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-12v4m-2-2h4m5 4v4m-2-2h4M17 3l-4.5 4.5M19 5l-4.5 4.5M5 17l4.5-4.5M3 19l4.5-4.5" /></svg>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">活躍逗粉 (近30日)</p>
+                            <p id="active-members-stat" class="text-3xl font-bold text-gray-900">0</p>
+                        </div>
+                         <div class="bg-lime-100 text-lime-600 p-3 rounded-full">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd" /> </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold text-lg text-gray-800 mb-4">主要客群年齡層</h3>
+                        <div class="chart-container"><canvas id="ageChart"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold text-lg text-gray-800 mb-4">顧客地區分佈</h3>
+                        <div class="chart-container"><canvas id="locationChart"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold text-lg text-gray-800 mb-4">新顧客成長趨勢 (近6個月)</h3>
+                        <div class="chart-container"><canvas id="newMemberGrowthChart"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold text-lg text-gray-800 mb-4">沉睡顧客喚醒趨勢 (近6個月)</h3>
+                        <div class="chart-container"><canvas id="reengagedCustomerChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="segmentation-section" class="tab-content">
+                <div class="prose max-w-full mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">顧客探索與分群</h2>
+                    <p class="text-gray-600">深入了解您的逗寶顧客！本區塊讓您能靈活運用多維度篩選器（包含顧客標籤、地區、年齡、育兒階段、會員等級、及關注產品線），精準鎖定目標客群，例如對「豆豆毯」有高度興趣的「金級逗粉」新手媽媽。篩選結果將即時呈現在下方顧客卡片列表，您也可以直接在卡片上管理個別顧客的標籤。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-start">
+                        <div>
+                            <label for="tag-filter" class="block text-sm font-medium text-gray-700 mb-1">篩選標籤 (可複選)</label>
+                            <select id="tag-filter" multiple class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md h-24"></select>
+                        </div>
+                        <div>
+                            <label for="location-filter" class="block text-sm font-medium text-gray-700 mb-1">篩選地區</label>
+                            <select id="location-filter" class="mt-1 block filter-select">
+                                <option value="">所有地區</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="age-filter" class="block text-sm font-medium text-gray-700 mb-1">篩選年齡層</label>
+                            <select id="age-filter" class="mt-1 block filter-select">
+                                <option value="">所有年齡</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="parenting-stage-filter" class="block text-sm font-medium text-gray-700 mb-1">育兒階段</label>
+                            <select id="parenting-stage-filter" class="mt-1 block filter-select">
+                                <option value="">所有階段</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="membership-tier-filter" class="block text-sm font-medium text-gray-700 mb-1">會員等級</label>
+                            <select id="membership-tier-filter" class="mt-1 block filter-select">
+                                <option value="">所有等級</option>
+                            </select>
+                        </div>
+                         <div>
+                            <label for="product-line-filter" class="block text-sm font-medium text-gray-700 mb-1">關注產品線</label>
+                            <select id="product-line-filter" class="mt-1 block filter-select">
+                                <option value="">所有產品線</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                    <h3 class="text-xl font-semibold text-gray-800">搜尋結果 <span class="text-base font-medium text-gray-500">(最多顯示前52筆)</span></h3>
+                    <div class="flex items-center gap-2 flex-wrap justify-center sm:justify-end">
+                          <button id="save-segment-btn" class="bg-sky-600 text-white px-3 py-1.5 rounded-md hover:bg-sky-700 text-sm whitespace-nowrap">💾 儲存客群</button>
+                          <button id="export-list-btn" class="bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 text-sm whitespace-nowrap">📄 匯出列表</button>
+                          <button id="send-message-btn" class="bg-orange-500 text-white px-3 py-1.5 rounded-md hover:bg-orange-600 text-sm whitespace-nowrap">💬 發送行銷訊息</button>
+                          <button id="create-coupon-btn" class="bg-purple-600 text-white px-3 py-1.5 rounded-md hover:bg-purple-700 text-sm whitespace-nowrap">💡 產生優惠文案</button>
+                        <div class="text-lg font-medium text-gray-700">
+                            找到 <span id="member-count" class="font-bold text-teal-600">0</span> 位顧客
+                        </div>
+                    </div>
+                </div>
+                <div id="member-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    </div>
+            </div>
+
+            <div id="management-section" class="tab-content">
+                 <div class="prose max-w-full mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">標籤庫管理</h2>
+                    <p class="text-gray-600">一個清晰、有條理的標籤庫是精準理解「新世代媽咪」與其「時尚育兒」偏好的基石。此處以樹狀結構呈現所有標籤，您可以輕鬆展開或收合各個分類，進行新增、編輯、合併或刪除等操作。透過「使用次數」快速洞察哪些標籤（例如「豆豆毯愛用者」或「高價值逗粉」）最具分析價值。</p>
+                </div>
+                <div class="flex justify-end mb-4">
+                    <button id="add-tag-btn" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">新增標籤</button>
+                </div>
+                <div id="tag-tree-container" class="bg-white shadow-md rounded-lg p-4 sm:p-6">
+                    </div>
+            </div>
+
+            <div id="prediction-section" class="tab-content">
+                <div class="prose max-w-full mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">預測分析</h2>
+                    <p class="text-gray-600">本區塊運用數據洞察未來趨勢，助您預測顧客行為與市場動態。您可以預測特定標籤（如「關注環保推車」）的成長潛力，識別新興顧客需求；或建立複雜的客群組合（例如「居住在台中地區、寶寶即將滿月、且對高端寢具有興趣的孕媽咪」），估算其未來規模。這些預測能為您的長期行銷策略、庫存管理，以及如「台中旗艦店」的資源規劃或「成人療癒產品線」的市場潛力評估，提供重要的量化支持。</p>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold text-lg text-gray-800 mb-2">個別標籤成長趨勢預測</h3>
+                        <p class="text-sm text-gray-500 mb-4">選擇一個標籤，查看其過去12個月的使用人數變化及未來6個月的趨勢預測。</p>
+                        <select id="trend-tag-select" class="block w-full mb-4 filter-select"></select>
+                        <div class="chart-container h-80"><canvas id="trendChart"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold text-lg text-gray-800 mb-2">目標客群規模預估</h3>
+                        <p class="text-sm text-gray-500 mb-4">建立一個由多個標籤組成的目標客群，系統將估算三個月後符合此條件的顧客人數。</p>
+                        <div id="prediction-builder" class="space-y-3">
+                            </div>
+                        <div class="flex items-center space-x-2 mt-4">
+                           <button id="add-prediction-condition-btn" class="text-sm bg-gray-200 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400">+</button>
+                           <button id="calculate-prediction-btn" class="text-sm bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-teal-500">估算客群規模</button>
+                        </div>
+                        <div class="mt-6 bg-teal-50 border-l-4 border-teal-500 p-4 rounded-r-lg">
+                           <div class="flex items-center">
+                                <div class="py-1"><svg class="h-8 w-8 text-teal-500 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002-2h2a2 2 0 002 2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></div>
+                                <div>
+                                    <p class="text-sm font-medium text-teal-800">預估客群人數 (3個月後)</p>
+                                    <p id="prediction-result" class="text-2xl font-bold text-teal-900">---</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="strategy-section" class="tab-content">
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <div class="text-center mb-6">
+                        <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">整合式顧客生命週期策略地圖</h1>
+                        <p class="mt-3 text-base text-gray-600">此策略地圖以視覺化方式呈現顧客生命週期中各階段（新客獲取、激活、經營、擁護、挽回）的行銷自動化佈局。每個圓點代表一項自動化行銷活動，其位置對應「自動化」與「個人化」程度，圓點大小則反映其「策略重要性」。將滑鼠懸停在圓點上，可查看該活動的觸發條件、溝通通路與核心目標，助您一目了然地評估與規劃整體行銷策略。</p>
+                    </div>
+            
+                    <div class="chart-container">
+                        <canvas id="strategyMapChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="custom-modal-overlay" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="modal-title" class="text-lg font-medium leading-6 text-gray-900 mb-2">提示</h3>
+            <div class="mt-2">
+                <p id="modal-message" class="text-sm text-gray-500"></p>
+            </div>
+            <div id="modal-input-container" class="mt-4 hidden">
+                <label id="modal-input-label" for="modal-input-field" class="block text-sm font-medium text-gray-700"></label>
+                <input type="text" id="modal-input-field" class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md focus:ring-teal-500 focus:border-teal-500">
+                <label id="modal-select-label" for="modal-select-field" class="block text-sm font-medium text-gray-700 mt-2"></label>
+                <select id="modal-select-field" class="mt-1 block w-full filter-select"></select>
+            </div>
+            <div class="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+                <button id="modal-confirm-btn" type="button" class="inline-flex w-full justify-center rounded-md border border-transparent bg-teal-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:col-start-2 sm:text-sm">確定</button>
+                <button id="modal-cancel-btn" type="button" class="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:col-start-1 sm:text-sm">取消</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+// NEW: Register the datalabels plugin globally so all charts can use it
+Chart.register(ChartDataLabels);
+
+// Main Application Object
+const App = {
+    // Application State
+    state: {
+        activeTab: 'dashboard', // Currently active tab
+        filters: { // Filters for member segmentation
+            tags: [],
+            location: '',
+            age: '',
+            parentingStage: '',
+            membershipTier: '',
+            preferredProductLine: ''
+        },
+        members: [], // Array of member objects
+        tags: [],    // Array of tag objects
+    },
+
+    chartInstances: {}, // Stores Chart.js instances
+
+    // Initialization function
+    init() {
+        this.generateMockData();       // Populate with sample data
+        this.setupEventListeners();    // Set up event listeners for UI elements
+        this.render();                 // Initial render of the application
+        this.initModal();              // Initialize modal event listeners
+    },
+
+    // --- Modal Helper Functions ---
+    modalOverlay: null,
+    modalContent: null,
+    modalTitle: null,
+    modalMessage: null,
+    modalInputContainer: null,
+    modalInputField: null,
+    modalInputLabel: null,
+    modalSelectField: null,
+    modalSelectLabel: null,
+    modalConfirmBtn: null,
+    modalCancelBtn: null,
+    modalConfirmCallback: null,
+    modalCancelCallback: null,
+
+    // Initializes modal elements and base event listeners
+    initModal() {
+        this.modalOverlay = document.getElementById('custom-modal-overlay');
+        this.modalContent = this.modalOverlay.querySelector('.modal-content');
+        this.modalTitle = document.getElementById('modal-title');
+        this.modalMessage = document.getElementById('modal-message');
+        this.modalInputContainer = document.getElementById('modal-input-container');
+        this.modalInputField = document.getElementById('modal-input-field');
+        this.modalInputLabel = document.getElementById('modal-input-label');
+        this.modalSelectField = document.getElementById('modal-select-field');
+        this.modalSelectLabel = document.getElementById('modal-select-label');
+        this.modalConfirmBtn = document.getElementById('modal-confirm-btn');
+        this.modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+        // Base listeners to close modal
+        this.modalOverlay.addEventListener('click', (e) => {
+            if (e.target === this.modalOverlay) this.hideModal();
+        });
+    },
+
+    // Shows a custom alert message
+    showAlert(message, title = "提示") {
+        this.modalTitle.textContent = title;
+        this.modalMessage.innerHTML = message; // Use innerHTML to allow for <br> etc.
+        this.modalInputContainer.classList.add('hidden');
+        this.modalConfirmBtn.textContent = '關閉';
+        this.modalCancelBtn.classList.add('hidden'); // Only one button for alert
+
+        this.modalConfirmBtn.onclick = () => this.hideModal(); // Default confirm action
+        this.modalOverlay.classList.add('active');
+    },
+
+    // Shows a custom confirmation dialog
+    showConfirm(message, title = "確認操作", confirmCallback, cancelCallback) {
+        this.modalTitle.textContent = title;
+        this.modalMessage.innerHTML = message; // Use innerHTML
+        this.modalInputContainer.classList.add('hidden');
+        this.modalConfirmBtn.textContent = '確定';
+        this.modalCancelBtn.textContent = '取消';
+        this.modalCancelBtn.classList.remove('hidden');
+
+        this.modalConfirmCallback = confirmCallback;
+        this.modalCancelCallback = cancelCallback;
+
+        this.modalConfirmBtn.onclick = () => {
+            this.hideModal();
+            if (this.modalConfirmCallback) this.modalConfirmCallback();
+        };
+        this.modalCancelBtn.onclick = () => {
+            this.hideModal();
+            if (this.modalCancelCallback) this.modalCancelCallback();
+        };
+        this.modalOverlay.classList.add('active');
+    },
+
+    // Shows a custom prompt dialog
+    showPrompt(message, title = "請輸入", defaultValue = "", inputLabel = "內容:", confirmCallback) {
+        this.modalTitle.textContent = title;
+        this.modalMessage.innerHTML = message; // Use innerHTML
+        this.modalInputContainer.classList.remove('hidden');
+        this.modalInputField.classList.remove('hidden');
+        this.modalInputLabel.classList.remove('hidden');
+        this.modalInputLabel.textContent = inputLabel;
+        this.modalInputField.value = defaultValue;
+        this.modalSelectField.classList.add('hidden'); // Hide select field for simple prompt
+        this.modalSelectLabel.classList.add('hidden');
+
+        this.modalConfirmBtn.textContent = '確定';
+        this.modalCancelBtn.textContent = '取消';
+        this.modalCancelBtn.classList.remove('hidden');
+
+        this.modalConfirmCallback = confirmCallback;
+
+        this.modalConfirmBtn.onclick = () => {
+            const value = this.modalInputField.value;
+            this.hideModal(); // Hide modal first
+            if (this.modalConfirmCallback) this.modalConfirmCallback(value); // Pass value
+        };
+        this.modalCancelBtn.onclick = () => {
+            this.hideModal();
+            if (this.modalConfirmCallback) this.modalConfirmCallback(null); // Indicate cancellation
+        };
+        this.modalOverlay.classList.add('active');
+        this.modalInputField.focus();
+    },
+
+    // Shows a custom prompt dialog with a select dropdown
+    showPromptWithSelect(message, title = "請選擇與輸入", inputDefaultValue = "", inputLabel = "名稱:", selectOptions = [], selectDefaultValue = "", selectLabel = "分類:", confirmCallback) {
+        this.modalTitle.textContent = title;
+        this.modalMessage.innerHTML = message; // Use innerHTML
+        this.modalInputContainer.classList.remove('hidden');
+        
+        this.modalInputField.classList.remove('hidden');
+        this.modalInputLabel.classList.remove('hidden');
+        this.modalInputLabel.textContent = inputLabel;
+        this.modalInputField.value = inputDefaultValue;
+
+        this.modalSelectField.classList.remove('hidden');
+        this.modalSelectLabel.classList.remove('hidden');
+        this.modalSelectLabel.textContent = selectLabel;
+        this.modalSelectField.innerHTML = selectOptions.map(opt => `<option value="${opt.value}" ${opt.value === selectDefaultValue ? 'selected' : ''}>${opt.text}</option>`).join('');
+
+
+        this.modalConfirmBtn.textContent = '確定';
+        this.modalCancelBtn.textContent = '取消';
+        this.modalCancelBtn.classList.remove('hidden');
+
+        this.modalConfirmCallback = confirmCallback;
+
+        this.modalConfirmBtn.onclick = () => {
+            const inputValue = this.modalInputField.value;
+            const selectValue = this.modalSelectField.value;
+            this.hideModal();
+            if (this.modalConfirmCallback) this.modalConfirmCallback({inputValue, selectValue});
+        };
+         this.modalCancelBtn.onclick = () => {
+            this.hideModal();
+            if (this.modalConfirmCallback) this.modalConfirmCallback(null); // Indicate cancellation
+        };
+
+        this.modalOverlay.classList.add('active');
+        this.modalInputField.focus();
+    },
+
+
+    // Hides the custom modal
+    hideModal() {
+        this.modalOverlay.classList.remove('active');
+        // Clear callbacks to prevent unintended execution
+        this.modalConfirmBtn.onclick = null;
+        this.modalCancelBtn.onclick = null;
+        this.modalConfirmCallback = null;
+        this.modalCancelCallback = null;
+    },
+
+
+    // Generates mock data for the application
+    generateMockData() {
+        // Define possible values for member properties
+        const parentingStages = ['孕媽咪', '新手媽媽 (0-1歲)', '幼兒期 (1-3歲)', '學齡前 (3歲以上)', '(未來)成人療癒'];
+        const membershipTiers = ['一般顧客', '銀級逗粉', '金級逗粉', '品牌摯友'];
+        const productLines = ['豆豆毯系列', '安撫玩具', '嬰兒寢具', '外出用品', '寶寶服飾', '沐浴保養', '成人舒壓(籌備中)'];
+        
+        // NEW: Expanded, hierarchical tag categories. Format: 'TopLevel/SecondLevel'
+        this.state.tags = [
+            // 基本屬性
+            { id: 5, name: '時尚媽咪', category: '基本屬性/生活風格', createdAt: '2023-03-05' },
+            { id: 21, name: '小資族', category: '基本屬性/消費觀', createdAt: '2024-01-20' },
+            { id: 6, name: '追求高品質', category: '基本屬性/消費觀', createdAt: '2023-03-10' },
+            { id: 22, name: '雙寶家庭', category: '基本屬性/家庭狀況', createdAt: '2024-02-11' },
+            
+            // 生命週期
+            { id: 9, name: '新註冊會員', category: '生命週期/顧客階段', createdAt: '2023-05-01' },
+            { id: 3, name: '潛力新客', category: '生命週期/顧客階段', createdAt: '2023-02-01' },
+            { id: 8, name: '沉睡顧客', category: '生命週期/沉睡喚醒', createdAt: '2023-04-15' },
+            { id: 23, name: '流失預警', category: '生命週期/沉睡喚醒', createdAt: '2024-03-15' },
+            { id: 24, name: '首購孕媽咪', category: '生命週期/育兒階段', createdAt: '2024-04-10' },
+            
+            // 購買行為
+            { id: 25, name: '高頻次購買', category: '購買行為/消費頻率', createdAt: '2024-05-01' },
+            { id: 26, name: '近期有消費', category: '購買行為/最近消費', createdAt: '2024-06-01' },
+            { id: 27, name: '偏好官網購物', category: '購買行為/購買通路', createdAt: '2024-02-25' },
+            { id: 28, name: '高客單價', category: '購買行為/消費金額', createdAt: '2023-11-18' },
+
+            // 產品偏好
+            { id: 4, name: '豆豆毯愛用者', category: '產品偏好/產品線偏好', createdAt: '2023-02-20' },
+            { id: 10, name: '關注環保推車', category: '產品偏好/產品線偏好', createdAt: '2023-05-12' },
+            { id: 11, name: '購買過Gunite陪睡床', category: '產品偏好/特定產品購買', createdAt: '2023-06-01' },
+            { id: 29, name: '喜愛聯名款', category: '產品偏好/風格偏好', createdAt: '2024-03-22' },
+
+            // 互動紀錄
+            { id: 2, name: '高互動粉絲', category: '互動紀錄/社群互動', createdAt: '2023-01-15' },
+            { id: 7, name: '活動參與常客', category: '互動紀錄/實體活動', createdAt: '2023-04-01' },
+            { id: 12, name: '參加寶寶運動會2024', category: '互動紀錄/實體活動', createdAt: '2023-06-10' },
+            { id: 13, name: '已領取媽媽禮', category: '互動紀錄/優惠領取', createdAt: '2023-07-02' },
+            { id: 30, name: '客服諮詢者', category: '互動紀錄/客服互動', createdAt: '2023-09-05' },
+
+            // 客群價值
+            { id: 1, name: 'VIP顧客', category: '客群價值/顧客等級', createdAt: '2023-01-10' },
+            { id: 31, name: '高貢獻潛力', category: '客群價值/潛力預測', createdAt: '2024-01-30' },
+            { id: 32, name: '品牌擁護者', category: '客群價值/顧客等級', createdAt: '2024-02-18' },
+        ];
+
+
+        const locations = ['台北市', '新北市', '桃園市', '台中市', '台南市', '高雄市', '新竹市', '海外地區'];
+        const ageGroups = ['20-24歲', '25-29歲', '30-34歲', '35-39歲', '40-44歲', '45歲以上'];
+        const firstNames = ['家豪', '志明', '俊傑', '雅婷', '怡君', '雅雯', '心怡', '詩涵', '宇翔', '佳蓉'];
+        const lastNames = ['陳', '林', '黃', '張', '李', '王', '吳', '劉', '蔡', '楊'];
+        
+        // Generate 250 mock members
+        this.state.members = []; // Clear existing members before generating new ones
+        for (let i = 1; i <= 250; i++) {
+            const memberTags = new Set();
+            const numTags = Math.floor(Math.random() * 5) + 1; // Assign 1 to 5 tags per member
+            for (let j = 0; j < numTags; j++) {
+                memberTags.add(this.state.tags[Math.floor(Math.random() * this.state.tags.length)].id);
+            }
+
+            // Simulate join date and last active date
+            const joinDateRandomizer = Math.floor(Math.random() * 365*2); // Joined in the last 2 years
+            const joinDate = new Date(Date.now() - joinDateRandomizer * 24 * 60 * 60 * 1000);
+            
+            let lastActive;
+            // ~20% chance of being a "sleeping customer" (inactive for > 120 days but not more than a year)
+            if (Math.random() < 0.2) { 
+                lastActive = new Date(joinDate.getTime() + Math.floor(Math.random() * (365 - 120) + 120) * 24 * 60 * 60 * 1000);
+                if (lastActive > new Date(Date.now() - 120 * 24 * 60 * 60 * 1000)) { // Ensure it's actually sleeping
+                     lastActive = new Date(Date.now() - (Math.floor(Math.random() * 245) + 120) * 24 * 60 * 60 * 1000);
+                }
+                if (!memberTags.has(8)) memberTags.add(8); // Add "沉睡顧客" tag if not present
+            } else {
+                // Active in the last 90 days for others
+                lastActive = new Date(Date.now() - Math.floor(Math.random() * 90) * 24 * 60 * 60 * 1000);
+                if (memberTags.has(8)) memberTags.delete(8); // Remove "沉睡顧客" tag if active
+            }
+            // Ensure lastActive is not before joinDate
+            if (lastActive < joinDate) lastActive = new Date(joinDate.getTime() + Math.floor(Math.random()*30)*24*60*60*1000);
+
+
+            this.state.members.push({
+                id: i,
+                name: `${lastNames[Math.floor(Math.random() * lastNames.length)]}${firstNames[Math.floor(Math.random() * firstNames.length)]}`,
+                email: `customer${i}@example-dollbao.com`,
+                joinDate: joinDate,
+                demographics: {
+                    ageGroup: ageGroups[Math.floor(Math.random() * ageGroups.length)],
+                    location: locations[Math.floor(Math.random() * locations.length)],
+                    parentingStage: parentingStages[Math.floor(Math.random() * parentingStages.length)],
+                    membershipTier: membershipTiers[Math.floor(Math.random() * membershipTiers.length)],
+                    preferredProductLine: productLines[Math.floor(Math.random() * productLines.length)],
+                    babyBirthMonth: Math.floor(Math.random() * 12) + 1, // Random month from 1 to 12
+                },
+                tagIds: Array.from(memberTags), // Convert Set to Array
+                lastActive: lastActive 
+            });
+        }
+    },
+
+    // Sets up event listeners for various UI elements
+    setupEventListeners() {
+        // Navigation buttons
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.state.activeTab = e.target.closest('.nav-btn').dataset.tab; // Ensure correct target for icon clicks
+                this.render();
+            });
+        });
+
+        // Filter dropdowns
+        document.getElementById('tag-filter').addEventListener('change', (e) => {
+            this.state.filters.tags = Array.from(e.target.selectedOptions).map(option => parseInt(option.value));
+            this.renderMemberList();
+        });
+        document.getElementById('location-filter').addEventListener('change', (e) => {
+            this.state.filters.location = e.target.value;
+            this.renderMemberList();
+        });
+        document.getElementById('age-filter').addEventListener('change', (e) => {
+            this.state.filters.age = e.target.value;
+            this.renderMemberList();
+        });
+        document.getElementById('parenting-stage-filter').addEventListener('change', (e) => {
+            this.state.filters.parentingStage = e.target.value;
+            this.renderMemberList();
+        });
+        document.getElementById('membership-tier-filter').addEventListener('change', (e) => {
+            this.state.filters.membershipTier = e.target.value;
+            this.renderMemberList();
+        });
+         document.getElementById('product-line-filter').addEventListener('change', (e) => {
+            this.state.filters.preferredProductLine = e.target.value;
+            this.renderMemberList();
+        });
+
+        // Action buttons
+        document.getElementById('add-tag-btn').addEventListener('click', () => this.handleAddTag());
+        document.getElementById('trend-tag-select').addEventListener('change', (e) => this.renderTrendChart(e.target.value));
+        document.getElementById('add-prediction-condition-btn').addEventListener('click', () => this.addPredictionCondition());
+        document.getElementById('calculate-prediction-btn').addEventListener('click', () => this.calculatePrediction());
+        
+        // Mock buttons for segmentation actions
+        ['save-segment-btn', 'export-list-btn', 'send-message-btn'].forEach(id => {
+            const btn = document.getElementById(id);
+            if(btn) btn.addEventListener('click', () => this.showAlert(`"${btn.textContent.trim()}" 功能為概念展示，尚未連接後端服務。`));
+        });
+        // Specific listener for the "Create Coupon" button to generate AI prompt
+        document.getElementById('create-coupon-btn').addEventListener('click', () => this.handleCreateCouponPrompt());
+
+    },
+
+    // Filters members based on the current filter state
+    getFilteredMembers() {
+        return this.state.members.filter(member => {
+            const tagMatch = this.state.filters.tags.length === 0 || this.state.filters.tags.every(tagId => member.tagIds.includes(tagId));
+            const locationMatch = !this.state.filters.location || member.demographics.location === this.state.filters.location;
+            const ageMatch = !this.state.filters.age || member.demographics.ageGroup === this.state.filters.age;
+            const parentingStageMatch = !this.state.filters.parentingStage || member.demographics.parentingStage === this.state.filters.parentingStage;
+            const membershipTierMatch = !this.state.filters.membershipTier || member.demographics.membershipTier === this.state.filters.membershipTier;
+            const productLineMatch = !this.state.filters.preferredProductLine || member.demographics.preferredProductLine === this.state.filters.preferredProductLine;
+            return tagMatch && locationMatch && ageMatch && parentingStageMatch && membershipTierMatch && productLineMatch;
+        });
+    },
+
+    // Main render function to update the UI based on the current state
+    render() {
+        // Update active tab styling
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === this.state.activeTab);
+        });
+        // Show/hide tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.toggle('active', content.id === `${this.state.activeTab}-section`);
+        });
+
+        // Render content for the active tab
+        switch (this.state.activeTab) {
+            case 'dashboard': this.renderDashboard(); break;
+            case 'segmentation': this.renderSegmentation(); break;
+            case 'management': this.renderTagManagement(); break;
+            case 'prediction': this.renderPrediction(); break;
+            case 'strategy': this.renderStrategyMap(); break; // NEW
+        }
+    },
+
+    // Renders the dashboard section
+    renderDashboard() {
+        document.getElementById('total-members-stat').textContent = this.state.members.length.toLocaleString();
+        document.getElementById('total-tags-stat').textContent = this.state.tags.length;
+        
+        // Calculate active members (active within the last 30 days)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const activeMembers = this.state.members.filter(m => m.lastActive > thirtyDaysAgo).length;
+        document.getElementById('active-members-stat').textContent = activeMembers.toLocaleString();
+
+        // Determine the most popular tag
+        const tagCounts = this.state.members.flatMap(m => m.tagIds).reduce((acc, tagId) => {
+            acc[tagId] = (acc[tagId] || 0) + 1; return acc;
+        }, {});
+        const topTagId = Object.keys(tagCounts).length > 0 ? Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a])[0] : null;
+        document.getElementById('top-tag-stat').textContent = topTagId ? (this.state.tags.find(t => t.id == topTagId)?.name || 'N/A') : 'N/A';
+        
+        // Render charts
+        this.renderAgeChart();
+        this.renderLocationChart();
+        this.renderNewMemberGrowthChart();
+        this.renderReengagedCustomerChart(); // New chart for re-engaged customers
+    },
+    
+    // Generic function to render or update a chart
+    renderChart(canvasId, type, data, options) {
+        if (this.chartInstances[canvasId]) {
+            this.chartInstances[canvasId].destroy(); // Destroy existing chart if it exists
+        }
+        const canvasEl = document.getElementById(canvasId);
+        if (!canvasEl) {
+            console.error(`Canvas element with ID ${canvasId} not found.`);
+            return;
+        }
+        const ctx = canvasEl.getContext('2d');
+        this.chartInstances[canvasId] = new Chart(ctx, { type, data, options });
+    },
+
+    // Renders the age distribution chart
+    renderAgeChart() {
+        const ageData = this.state.members.reduce((acc, member) => {
+            acc[member.demographics.ageGroup] = (acc[member.demographics.ageGroup] || 0) + 1; return acc;
+        }, {});
+        const sortedAgeGroups = Object.keys(ageData).sort((a, b) => parseInt(a.split('-')[0] || a.split('歲')[0]) - parseInt(b.split('-')[0] || b.split('歲')[0])); // Sort age groups
+        
+        this.renderChart('ageChart', 'bar', {
+            labels: sortedAgeGroups,
+            datasets: [{
+                label: '顧客人數',
+                data: sortedAgeGroups.map(group => ageData[group]),
+                backgroundColor: 'rgba(13, 148, 136, 0.6)', // Teal color
+                borderColor: 'rgba(13, 148, 136, 1)',
+                borderWidth: 1
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } });
+    },
+
+    // Renders the location distribution chart
+    renderLocationChart() {
+        const locationData = this.state.members.reduce((acc, member) => {
+            acc[member.demographics.location] = (acc[member.demographics.location] || 0) + 1; return acc;
+        }, {});
+        // Sort locations by count and take top 6, grouping others into '其他'
+        const sortedLocationEntries = Object.entries(locationData).sort(([,a],[,b]) => b-a);
+        let displayLocations = {};
+        let otherCount = 0;
+        sortedLocationEntries.forEach(([loc, count], index) => {
+            if (index < 6) {
+                displayLocations[loc] = count;
+            } else {
+                otherCount += count;
+            }
+        });
+        if (otherCount > 0) displayLocations['其他地區'] = otherCount;
+        const finalSortedLocations = Object.keys(displayLocations).sort((a,b) => displayLocations[b] - displayLocations[a]);
+        
+        this.renderChart('locationChart', 'doughnut', {
+            labels: finalSortedLocations,
+            datasets: [{
+                label: '顧客地區分佈',
+                data: finalSortedLocations.map(loc => displayLocations[loc]),
+                backgroundColor: ['#0d9488', '#0891b2', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7'], // Various shades of blue/purple
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, datalabels: { display: false } } });
+    },
+
+    // Renders the new member growth trend chart
+    renderNewMemberGrowthChart() {
+        const labels = Array.from({length: 6}, (_, i) => { // Last 6 months
+            const d = new Date();
+            d.setMonth(d.getMonth() - (5 - i));
+            return d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'short' });
+        });
+        // Mock data for new members per month, simulating some growth
+        const data = labels.map((_, i) => Math.floor(Math.random() * 20) + 10 + (i * 3)); 
+
+        this.renderChart('newMemberGrowthChart', 'line', {
+            labels: labels,
+            datasets: [{
+                label: '新顧客人數',
+                data: data,
+                borderColor: '#f97316', // Orange color
+                backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } });
+    },
+
+    // Renders the re-engaged customer trend chart (New)
+    renderReengagedCustomerChart() {
+        const labels = Array.from({length: 6}, (_, i) => { // Last 6 months
+            const d = new Date();
+            d.setMonth(d.getMonth() - (5 - i));
+            return d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'short' });
+        });
+        // Mock data for re-engaged customers. A more sophisticated approach would analyze actual activity.
+        // For now, generate random data indicating a small number of re-engaged customers.
+        const data = labels.map(() => Math.floor(Math.random() * 10) + 2); // e.g., 2-12 re-engaged customers per month
+
+        this.renderChart('reengagedCustomerChart', 'line', {
+            labels: labels,
+            datasets: [{
+                label: '喚醒顧客數',
+                data: data,
+                borderColor: '#8b5cf6', // Purple color
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } });
+    },
+
+
+    // Renders the segmentation section (filters and member list)
+    renderSegmentation() {
+        // Helper function to populate select dropdowns
+        const populateFilter = (filterId, dataKey, emptyOptionText, selectedValue) => {
+            const filterEl = document.getElementById(filterId);
+            if (!filterEl) return; // Element might not exist if HTML is malformed
+            const uniqueValues = [...new Set(this.state.members.map(m => m.demographics[dataKey]))].filter(Boolean).sort(); // Filter out null/undefined and sort
+            filterEl.innerHTML = `<option value="">${emptyOptionText}</option>` + uniqueValues.map(val => `<option value="${val}">${val}</option>`).join('');
+            filterEl.value = selectedValue;
+        };
+
+        // Populate tag filter
+        const tagFilter = document.getElementById('tag-filter');
+        tagFilter.innerHTML = this.state.tags.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant')).map(tag => `<option value="${tag.id}">${tag.name}</option>`).join('');
+        Array.from(tagFilter.options).forEach(option => { // Set selected options for multi-select
+            option.selected = this.state.filters.tags.includes(parseInt(option.value));
+        });
+
+        // Populate other demographic filters
+        populateFilter('location-filter', 'location', '所有地區', this.state.filters.location);
+        populateFilter('age-filter', 'ageGroup', '所有年齡', this.state.filters.age);
+        populateFilter('parenting-stage-filter', 'parentingStage', '所有階段', this.state.filters.parentingStage);
+        populateFilter('membership-tier-filter', 'membershipTier', '所有等級', this.state.filters.membershipTier);
+        populateFilter('product-line-filter', 'preferredProductLine', '所有產品線', this.state.filters.preferredProductLine);
+        
+        this.renderMemberList(); // Render the list of members based on current filters
+    },
+
+    // Renders the list of member cards
+    renderMemberList() {
+        const filteredMembers = this.getFilteredMembers();
+        const memberListEl = document.getElementById('member-list');
+        memberListEl.innerHTML = ''; // Clear existing list
+
+        if (filteredMembers.length === 0) {
+            memberListEl.innerHTML = `<p class="text-gray-500 col-span-full text-center py-10">找不到符合條件的顧客。</p>`;
+        } else {
+            // Display up to 52 members for performance and layout
+            filteredMembers.slice(0, 52).forEach(member => {
+                // Generate HTML for member's tags
+                const tagsHtml = member.tagIds.map(tagId => {
+                    const tag = this.state.tags.find(t => t.id === tagId);
+                    return tag ? `<span class="tag">${tag.name}<span class="tag-remove" data-member-id="${member.id}" data-tag-id="${tagId}">×</span></span>` : '';
+                }).join('');
+
+                // Create member card element
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col';
+                card.innerHTML = `
+                    <div class="flex-grow">
+                        <h4 class="font-bold text-lg text-gray-800 truncate" title="${member.name}">${member.name}</h4>
+                        <p class="text-sm text-gray-500 mb-1 truncate" title="${member.email}">${member.email}</p>
+                        <p class="text-xs text-gray-600 mb-0.5">👶🏻 寶寶生日: ${member.demographics.babyBirthMonth}月</p>
+                        <p class="text-xs text-gray-600 mb-0.5">📍 地區: ${member.demographics.location} | 🎂 年齡層: ${member.demographics.ageGroup}</p>
+                        <p class="text-xs text-gray-600 mb-0.5">👪 育兒階段: ${member.demographics.parentingStage}</p>
+                        <p class="text-xs text-gray-600 mb-0.5">⭐ 會員等級: ${member.demographics.membershipTier}</p>
+                        <p class="text-xs text-gray-600 mb-2">🛍️ 關注產品: ${member.demographics.preferredProductLine}</p>
+                        <div class="mt-2 flex flex-wrap gap-1 min-h-[24px]">${tagsHtml}</div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <button class="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded hover:bg-teal-100 w-full text-center view-details-btn" data-member-id="${member.id}">查看詳情</button>
+                    </div>
+                `;
+                memberListEl.appendChild(card);
+            });
+        }
+        
+        // Add event listeners for removing tags from members
+        document.querySelectorAll('.tag-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent card click event
+                const memberId = parseInt(e.target.dataset.memberId);
+                const tagId = parseInt(e.target.dataset.tagId);
+                this.removeTagFromMember(memberId, tagId);
+            });
+        });
+        // Add event listeners for "View Details" (mock)
+         document.querySelectorAll('.view-details-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const memberId = e.target.dataset.memberId;
+                const member = this.state.members.find(m => m.id == memberId);
+                this.showAlert(`查看顧客「${member.name}」的詳細資料 (概念功能)。<br>Email: ${member.email}<br>加入日期: ${new Date(member.joinDate).toLocaleDateString()}`, "顧客詳情");
+            });
+        });
+
+        // Update member count display
+        document.getElementById('member-count').textContent = filteredMembers.length.toLocaleString();
+    },
+
+    // Removes a tag from a specific member
+    removeTagFromMember(memberId, tagIdToRemove) {
+        const member = this.state.members.find(m => m.id === memberId);
+        const tag = this.state.tags.find(t => t.id === tagIdToRemove);
+        if (member && tag) {
+            this.showConfirm(`確定要從顧客「${member.name}」身上移除標籤「${tag.name}」嗎?`, "移除標籤確認", () => {
+                member.tagIds = member.tagIds.filter(id => id !== tagIdToRemove);
+                this.renderMemberList(); // Re-render only the member list
+            });
+        }
+    },
+    
+    // NEW: Renders the tag management section as a tree
+    renderTagManagement() {
+        const container = document.getElementById('tag-tree-container');
+        if (!container) return;
+        
+        const tagCounts = this.state.members.flatMap(m => m.tagIds).reduce((acc, tagId) => {
+            acc[tagId] = (acc[tagId] || 0) + 1; return acc;
+        }, {});
+
+        const tagTree = {
+            '基本屬性': { icon: '👤', sub: {} },
+            '生命週期': { icon: '🔄', sub: {} },
+            '購買行為': { icon: '🛒', sub: {} },
+            '產品偏好': { icon: '💖', sub: {} },
+            '互動紀錄': { icon: '💬', sub: {} },
+            '客群價值': { icon: '💎', sub: {} },
+            '未分類': { icon: '🏷️', sub: { '未分類': [] } }
+        };
+
+        // Populate the tree structure
+        this.state.tags.forEach(tag => {
+            const [cat1, cat2] = (tag.category || '未分類/未分類').split('/');
+            if (tagTree[cat1]) {
+                if (!tagTree[cat1].sub[cat2]) {
+                    tagTree[cat1].sub[cat2] = [];
+                }
+                tagTree[cat1].sub[cat2].push(tag);
+            } else {
+                 tagTree['未分類'].sub['未分類'].push(tag);
+            }
+        });
+
+        let html = '<ul class="tree">';
+        for (const cat1Name in tagTree) {
+            const cat1 = tagTree[cat1Name];
+            html += `<li class="tree-item">
+                        <div class="tree-category-header text-lg text-teal-800" data-toggle-tree data-target="tree-cat1-${cat1Name.replace(/\s/g, '')}">
+                            <span class="toggle-icon">▼</span>
+                            <span class="icon">${cat1.icon}</span> ${cat1Name}
+                        </div>
+                        <ul class="tree-tags-container" id="tree-cat1-${cat1Name.replace(/\s/g, '')}">`;
+
+            for (const cat2Name in cat1.sub) {
+                const tags = cat1.sub[cat2Name];
+                if (tags.length > 0) {
+                     html += `<li class="tree-item">
+                                <div class="tree-category-header text-md text-gray-700" data-toggle-tree data-target="tree-cat2-${(cat1Name+cat2Name).replace(/\s/g, '')}">
+                                    <span class="toggle-icon">▼</span>
+                                    ${cat2Name}
+                                </div>
+                                <ul class="tree-tags-container" id="tree-cat2-${(cat1Name+cat2Name).replace(/\s/g, '')}">`;
+                    
+                     tags.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(tag => {
+                         html += `<li class="tree-tag-item">
+                                      <div class="tree-tag-info">
+                                          <span class="tree-tag-name">${tag.name}</span>
+                                          <div class="tree-tag-details">
+                                               <span><strong class="font-semibold text-gray-600">人數:</strong> ${(tagCounts[tag.id] || 0).toLocaleString()}</span>
+                                               <span><strong class="font-semibold text-gray-600">建立:</strong> ${tag.createdAt || 'N/A'}</span>
+                                          </div>
+                                      </div>
+                                      <div class="tree-tag-actions text-sm font-medium">
+                                          <button data-id="${tag.id}" class="edit-tag-btn text-teal-600 hover:text-teal-900 mr-3">編輯</button>
+                                          <button data-id="${tag.id}" class="merge-tag-btn text-indigo-600 hover:text-indigo-900 mr-3">合併</button>
+                                          <button data-id="${tag.id}" class="delete-tag-btn text-red-600 hover:text-red-900">刪除</button>
+                                      </div>
+                                   </li>`;
+                     });
+
+                     html += `</ul></li>`;
+                }
+            }
+            html += `</ul></li>`;
+        }
+        html += '</ul>';
+        container.innerHTML = html;
+        
+        // Add event listeners for tree toggling and tag actions
+        this.addTreeEventListeners();
+    },
+
+    // NEW: Adds event listeners for the tag tree UI
+    addTreeEventListeners() {
+        document.querySelectorAll('[data-toggle-tree]').forEach(header => {
+            header.addEventListener('click', e => {
+                e.preventDefault();
+                const targetId = header.dataset.target;
+                const targetElement = document.getElementById(targetId);
+                if (targetElement) {
+                    header.classList.toggle('collapsed');
+                    targetElement.classList.toggle('collapsed');
+                }
+            });
+        });
+        
+        document.querySelectorAll('.edit-tag-btn').forEach(btn => btn.addEventListener('click', e => this.handleEditTag(e.target.dataset.id)));
+        document.querySelectorAll('.merge-tag-btn').forEach(btn => btn.addEventListener('click', e => this.handleMergeTag(e.target.dataset.id)));
+        document.querySelectorAll('.delete-tag-btn').forEach(btn => btn.addEventListener('click', e => this.handleDeleteTag(e.target.dataset.id)));
+    },
+    
+    // MODIFIED: Handles adding a new tag with hierarchical categories
+    handleAddTag() {
+        // Build options for select dropdown from the tree structure
+        const categoryOptions = [];
+        const treeTemplate = this.getTagCategoryTemplate();
+        for (const cat1 in treeTemplate) {
+            for (const cat2 in treeTemplate[cat1].sub) {
+                categoryOptions.push({ value: `${cat1}/${cat2}`, text: `${cat1} / ${cat2}` });
+            }
+        }
+        categoryOptions.push({ value: '新分類', text: '（新增分類）' });
+
+        this.showPromptWithSelect(
+            "請輸入新標籤的名稱和分類。", 
+            "新增標籤", 
+            "", 
+            "標籤名稱:", 
+            categoryOptions, 
+            "", 
+            "標籤分類:", 
+            (result) => {
+                if (result) {
+                    let { inputValue: tagName, selectValue: tagCategory } = result;
+                    tagName = tagName ? tagName.trim() : "";
+
+                    if (!tagName) {
+                        this.showAlert("標籤名稱不得為空。"); return;
+                    }
+                    if (this.state.tags.some(t => t.name.toLowerCase() === tagName.toLowerCase())) {
+                        this.showAlert("標籤名稱已存在，請使用其他名稱。"); return;
+                    }
+
+                    if (tagCategory === '新分類') {
+                        this.showPrompt("請為新標籤建立分類，格式：<br><b>主分類/次分類</b> (例如: 基本屬性/新客製分類)", "新增分類", "", "分類名稱:", (newCat) => {
+                            if (newCat && newCat.trim() && newCat.includes('/')) {
+                                this._createTag(tagName, newCat.trim());
+                            } else if (newCat !== null) { // User entered something invalid
+                                this.showAlert("分類格式不正確，請使用'主分類/次分類'格式。");
+                            } // if null, user cancelled, do nothing
+                        });
+                    } else {
+                        this._createTag(tagName, tagCategory || '未分類/未分類');
+                    }
+                }
+            }
+        );
+    },
+    
+    // Private helper to actually create the tag after getting category
+    _createTag(name, category) {
+        const newId = this.state.tags.length > 0 ? Math.max(...this.state.tags.map(t => t.id)) + 1 : 1;
+        this.state.tags.push({ 
+            id: newId, 
+            name: name, 
+            category: category,
+            createdAt: new Date().toISOString().split('T')[0] // Record creation date
+        });
+        this.renderTagManagement();
+        if(this.state.activeTab === 'segmentation') this.renderSegmentation(); // Refresh tag filter if on segmentation tab
+        this.showAlert(`標籤「${name}」已成功新增至分類「${category}」。`, "新增成功");
+    },
+    
+    // NEW: Gets the base structure for tag categories
+    getTagCategoryTemplate() {
+        return {
+            '基本屬性': { icon: '👤', sub: {'生活風格':[], '消費觀':[], '家庭狀況':[]} },
+            '生命週期': { icon: '🔄', sub: {'顧客階段':[], '育兒階段':[], '沉睡喚醒':[]} },
+            '購買行為': { icon: '🛒', sub: {'消費頻率':[], '最近消費':[], '購買通路':[], '消費金額':[]} },
+            '產品偏好': { icon: '💖', sub: {'產品線偏好':[], '特定產品購買':[], '風格偏好':[]} },
+            '互動紀錄': { icon: '💬', sub: {'社群互動':[], '實體活動':[], '優惠領取':[], '客服互動':[]} },
+            '客群價值': { icon: '💎', sub: {'顧客等級':[], '潛力預測':[]} },
+        };
+    },
+
+    // Handles editing an existing tag
+    handleEditTag(tagId) {
+        const tag = this.state.tags.find(t => t.id == tagId);
+        if (!tag) return;
+
+        const categoryOptions = [];
+        const treeTemplate = this.getTagCategoryTemplate();
+        for (const cat1 in treeTemplate) {
+            for (const cat2 in treeTemplate[cat1].sub) {
+                categoryOptions.push({ value: `${cat1}/${cat2}`, text: `${cat1} / ${cat2}` });
+            }
+        }
+        // Ensure current tag's category is in options, even if it's custom
+        if (tag.category && !categoryOptions.some(opt => opt.value === tag.category)) {
+             categoryOptions.unshift({value: tag.category, text: tag.category});
+        }
+        categoryOptions.push({ value: '新分類', text: '（新增分類）' });
+
+
+        this.showPromptWithSelect(
+            `正在編輯標籤「${tag.name}」。`,
+            "編輯標籤",
+            tag.name,
+            "新標籤名稱:",
+            categoryOptions,
+            tag.category, 
+            "標籤分類:",
+            (result) => {
+                 if (result) {
+                    let { inputValue: newName, selectValue: newCategory } = result;
+                    newName = newName ? newName.trim() : "";
+
+                    if (!newName) {
+                        this.showAlert("標籤名稱不得為空。"); return;
+                    }
+                    if (this.state.tags.some(t => t.name.toLowerCase() === newName.toLowerCase() && t.id != tagId)) {
+                        this.showAlert("標籤名稱與其他標籤重複，請使用其他名稱。"); return;
+                    }
+                    
+                    const oldName = tag.name;
+                    const oldCategory = tag.category;
+
+                    if (newCategory === '新分類') {
+                         this.showPrompt("請為標籤建立新分類，格式：<br><b>主分類/次分類</b>", "新增分類", tag.category, "分類名稱:", (customCat) => {
+                            if (customCat && customCat.trim() && customCat.includes('/')) {
+                                tag.name = newName;
+                                tag.category = customCat.trim();
+                                this._finalizeTagEdit(tag, oldName, oldCategory);
+                            } else if (customCat !== null) {
+                                this.showAlert("分類格式不正確，請使用'主分類/次分類'格式。");
+                            }
+                        });
+                    } else {
+                        tag.name = newName;
+                        tag.category = newCategory || '未分類/未分類';
+                        this._finalizeTagEdit(tag, oldName, oldCategory);
+                    }
+                }
+            }
+        );
+    },
+
+    _finalizeTagEdit(tag, oldName, oldCategory) {
+        this.renderTagManagement();
+        if(this.state.activeTab === 'segmentation') this.renderSegmentation();
+        this.showAlert(`標籤已從「${oldName} (${oldCategory||'N/A'})」更新為「${tag.name} (${tag.category})」。`, "編輯成功");
+    },
+    
+    // Handles deleting a tag
+    handleDeleteTag(tagId) {
+        const tag = this.state.tags.find(t => t.id == tagId);
+        if (!tag) return;
+        this.showConfirm(`確定要刪除標籤「${tag.name}」嗎？<br>所有顧客身上的此標籤也會被移除。<br>此操作無法復原。`, "刪除標籤確認", () => {
+            this.state.tags = this.state.tags.filter(t => t.id != tagId);
+            // Remove the tag from all members
+            this.state.members.forEach(m => {
+                m.tagIds = m.tagIds.filter(id => id != tagId);
+            });
+            this.renderTagManagement();
+            if(this.state.activeTab === 'segmentation') this.renderSegmentation(); // Refresh tag filter
+            this.showAlert(`標籤「${tag.name}」已成功刪除。`, "刪除成功");
+        });
+    },
+    
+    // Handles merging one tag into another
+    handleMergeTag(sourceTagIdString) {
+        const sourceTagId = parseInt(sourceTagIdString);
+        const sourceTag = this.state.tags.find(t => t.id === sourceTagId);
+        if (!sourceTag) return;
+
+        const availableTags = this.state.tags.filter(t => t.id !== sourceTagId);
+        if (availableTags.length === 0) {
+            this.showAlert("沒有其他標籤可供合併。"); return;
+        }
+
+        // Create select options for target tag
+        let selectOptionsHTML = '<option value="">-- 請選擇目標標籤 --</option>';
+        selectOptionsHTML += availableTags.map(t => `<option value="${t.id}">${t.name} (${t.category || '未分類'})</option>`).join('');
+        
+        const modalMessage = `您要將標籤「${sourceTag.name}」合併至哪個標籤？<br>此標籤將被刪除，其顧客將轉移至目標標籤。`;
+        this.modalTitle.textContent = "合併標籤";
+        this.modalMessage.innerHTML = modalMessage; // Use innerHTML for <br>
+        this.modalInputContainer.classList.remove('hidden');
+        this.modalInputField.classList.add('hidden'); // Hide text input
+        this.modalInputLabel.classList.add('hidden');
+        this.modalSelectField.classList.remove('hidden');
+        this.modalSelectLabel.classList.remove('hidden');
+        this.modalSelectLabel.textContent = "選擇目標標籤:";
+        this.modalSelectField.innerHTML = selectOptionsHTML;
+
+        this.modalConfirmBtn.textContent = '確定合併';
+        this.modalCancelBtn.textContent = '取消';
+        this.modalCancelBtn.classList.remove('hidden');
+
+        this.modalConfirmBtn.onclick = () => {
+            const targetTagIdStr = this.modalSelectField.value;
+            this.hideModal(); // Hide modal first
+
+            if (targetTagIdStr && this.state.tags.some(t => t.id == targetTagIdStr)) {
+                const targetTagId = parseInt(targetTagIdStr);
+                const targetTag = this.state.tags.find(t => t.id === targetTagId);
+
+                this.showConfirm(
+                    `確定要將標籤「${sourceTag.name}」合併入標籤「${targetTag.name}」嗎?<br>此操作不可復原。`,
+                    "合併確認",
+                    () => {
+                        // Update members: remove sourceTagId, add targetTagId if not present
+                        this.state.members.forEach(m => {
+                            if (m.tagIds.includes(sourceTagId)) {
+                                m.tagIds = m.tagIds.filter(id => id !== sourceTagId);
+                                if (!m.tagIds.includes(targetTagId)) {
+                                    m.tagIds.push(targetTagId);
+                                }
+                            }
+                        });
+                        // Remove source tag from state
+                        this.state.tags = this.state.tags.filter(t => t.id !== sourceTagId);
+                        this.renderTagManagement();
+                        if(this.state.activeTab === 'segmentation') this.renderSegmentation();
+                        this.showAlert(`標籤「${sourceTag.name}」已成功合併至「${targetTag.name}」。`, "合併成功");
+                    }
+                );
+            } else if (targetTagIdStr === "") {
+                 this.showAlert("請選擇一個目標標籤。");
+            } else {
+                 this.showAlert("選擇的目標標籤無效。");
+            }
+        };
+        this.modalCancelBtn.onclick = () => this.hideModal();
+        this.modalOverlay.classList.add('active');
+    },
+
+    // Renders the prediction section
+    renderPrediction() {
+        const trendSelect = document.getElementById('trend-tag-select');
+        trendSelect.innerHTML = '<option value="">-- 選擇標籤預測趨勢 --</option>' + this.state.tags.map(tag => `<option value="${tag.id}">${tag.name}</option>`).join('');
+        // Clear previous chart if no tag is selected or if chart exists
+        if (this.chartInstances['trendChart']) {
+             this.chartInstances['trendChart'].destroy();
+             delete this.chartInstances['trendChart']; // Remove instance
+        }
+        if (trendSelect.value) { // If a value was previously selected, re-render
+          this.renderTrendChart(trendSelect.value);
+        }
+        
+        this.renderPredictionBuilder(); // Setup prediction builder UI
+        document.getElementById('prediction-result').textContent = '---'; // Reset prediction result
+    },
+
+    // Renders the trend chart for a selected tag
+    renderTrendChart(tagId) {
+        if (!tagId) { // If no tagId (e.g., placeholder selected), clear chart
+            if (this.chartInstances['trendChart']) {
+                 this.chartInstances['trendChart'].destroy();
+                 delete this.chartInstances['trendChart'];
+            }
+            return;
+        }
+        tagId = parseInt(tagId);
+        // Generate labels for the last 12 months
+        const labels = Array.from({length: 12}, (_, i) => {
+            const d = new Date();
+            d.setMonth(d.getMonth() - (11 - i));
+            return d.toLocaleDateString('zh-TW', { year: '2-digit', month: 'short' });
+        });
+        
+        // Mock historical data based on tagId to make it somewhat varied
+        const baseCount = (tagId % 5 + 1) * 20; // Base users for this tag, to add some variability
+        const historicalData = labels.map(() => Math.floor(Math.random() * baseCount/2 + baseCount/1.5)); // Random historical data
+        
+        const lastValue = historicalData[historicalData.length - 1];
+        const trend = (Math.random() - 0.4); // Slight random trend factor
+        // Mock predicted data for the next 6 months
+        const predictedData = Array.from({length: 6}, (_, i) => Math.max(0, Math.round(lastValue + (trend * (i + 1) * (baseCount/20)) + (Math.random() * (baseCount/10) - (baseCount/20)))));
+        
+        // Combine historical and predicted labels
+        const fullLabels = [...labels, ...Array.from({length: 6}, (_, i) => {
+            const d = new Date();
+            d.setMonth(d.getMonth() + i + 1); // Next 6 months
+            return d.toLocaleDateString('zh-TW', { year: '2-digit', month: 'short' });
+        })];
+
+        this.renderChart('trendChart', 'line', {
+            labels: fullLabels,
+            datasets: [
+                { // Historical data series
+                    label: '歷史人數', data: [...historicalData, ...Array(6).fill(null)], // Fill future part with null
+                    borderColor: '#0d9488', tension: 0.1, fill: false
+                },
+                { // Predicted data series
+                    label: '預測人數', data: [...Array(11).fill(null), historicalData[11], ...predictedData], // Connect to last historical point
+                    borderColor: '#f97316', borderDash: [5, 5], tension: 0.1, fill: false
+                }
+            ]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top'}, datalabels: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } });
+    },
+    
+    // Renders the UI for building prediction conditions
+    renderPredictionBuilder() {
+        const builderEl = document.getElementById('prediction-builder');
+        builderEl.innerHTML = ''; // Clear previous conditions
+        this.addPredictionCondition(); // Add the first condition row
+    },
+
+    // Adds a new condition row to the prediction builder
+    addPredictionCondition() {
+        const builderEl = document.getElementById('prediction-builder');
+        const index = builderEl.children.length; // Current number of conditions
+
+        const row = document.createElement('div');
+        row.className = 'flex items-center space-x-2 prediction-condition-row';
+        // Logic operator (AND/OR) select, not shown for the first condition
+        let logicSelectHtml = '<span class="w-24 inline-block"></span>'; // Placeholder for alignment
+        if (index > 0) {
+            logicSelectHtml = `<select class="logic-select w-24 border-gray-300 rounded-md shadow-sm text-sm py-1.5 focus:ring-teal-500 focus:border-teal-500"><option value="AND">並且 (AND)</option><option value="OR">或者 (OR)</option></select>`;
+        }
+        
+        // HTML for the condition row
+        row.innerHTML = `
+            ${logicSelectHtml}
+            <select class="tag-select flex-1 border-gray-300 rounded-md shadow-sm text-sm py-1.5 focus:ring-teal-500 focus:border-teal-500">
+                <option value="">-- 選擇標籤 --</option>
+                ${this.state.tags.map(tag => `<option value="${tag.id}">${tag.name}</option>`).join('')}
+            </select>
+            <button class="remove-condition-btn text-red-500 p-1 rounded-full hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 text-lg leading-none">&times;</button>
+        `;
+        builderEl.appendChild(row);
+        // Event listener to remove the condition row
+        row.querySelector('.remove-condition-btn').addEventListener('click', () => {
+            row.remove();
+            // If all conditions are removed, add a new empty one
+            if (builderEl.children.length === 0) this.addPredictionCondition();
+            else { // Adjust first row's logic placeholder if it becomes the first
+                const firstRow = builderEl.children[0];
+                if (firstRow && firstRow.children.length > 0 && firstRow.children[0].tagName === 'SPAN' && firstRow.children[0].classList.contains('w-24')) {
+                    // Already has placeholder, do nothing
+                } else if (firstRow && firstRow.children.length > 0 && firstRow.children[0].tagName === 'SELECT' && firstRow.children[0].classList.contains('logic-select')) {
+                    // Needs placeholder instead of logic select
+                     firstRow.children[0].outerHTML = '<span class="w-24 inline-block"></span>';
+                }
+            }
+        });
+    },
+    
+    // Calculates and displays the prediction based on selected conditions
+    calculatePrediction() {
+        // Get conditions from the UI, filtering out rows where no tag is selected
+        const conditions = Array.from(document.querySelectorAll('.prediction-condition-row'))
+            .map(row => ({
+                logic: row.querySelector('.logic-select')?.value || 'FIRST', // 'FIRST' for the first condition
+                tagId: parseInt(row.querySelector('.tag-select').value)
+            }))
+            .filter(c => c.tagId); // Filter out conditions with no tag selected
+
+        if (conditions.length === 0) {
+            document.getElementById('prediction-result').textContent = '0'; 
+            this.showAlert("請至少選擇一個標籤來進行預估。");
+            return;
+        }
+
+        let basePopulation = this.state.members.length;
+        let finalProbability = 0;
+        
+        // Simplified probability calculation for mock purposes (very basic)
+        let currentSet = new Set(); // Set of member IDs matching current combined condition
+        conditions.forEach((condition, index) => {
+            const membersWithTag = new Set(this.state.members.filter(m => m.tagIds.includes(condition.tagId)).map(m => m.id));
+            if (index === 0 || condition.logic === 'FIRST') {
+                currentSet = membersWithTag;
+            } else if (condition.logic === 'AND') {
+                // Intersect currentSet with membersWithTag
+                currentSet = new Set([...currentSet].filter(id => membersWithTag.has(id)));
+            } else { // OR
+                // Union currentSet with membersWithTag
+                currentSet = new Set([...currentSet, ...membersWithTag]);
+            }
+        });
+        finalProbability = basePopulation > 0 ? (currentSet.size / basePopulation) : 0; // Proportion of members matching combined conditions
+
+        // Apply a random future growth factor (-2% to +8%)
+        const futureGrowthFactor = 1 + (Math.random() * 0.1 - 0.02); 
+        const predictedCount = Math.round(basePopulation * finalProbability * futureGrowthFactor);
+        
+        // Display the result with a slight delay for effect
+        const resultEl = document.getElementById('prediction-result');
+        resultEl.textContent = '計算中...';
+        setTimeout(() => {
+            resultEl.textContent = predictedCount.toLocaleString();
+        }, 800);
+    },
+
+    // NEW: Helper to find the most common property in a set of members
+    getMostCommonProperty(members, property) {
+        if (!members || members.length === 0) return null;
+        const counts = members.reduce((acc, member) => {
+            const value = member.demographics[property];
+            if (value) {
+                acc[value] = (acc[value] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        if (Object.keys(counts).length === 0) return null;
+
+        const sorted = Object.entries(counts).sort(([,a],[,b]) => b-a);
+        
+        // Only return if the most common property is present in at least 20% of the members.
+        if (sorted[0][1] < members.length * 0.2) {
+            return null; // Avoids weak signals
+        }
+        // If the top property isn't significantly more common than the next, describe it as diverse.
+        if (sorted.length > 1 && sorted[0][1] < sorted[1][1] * 1.5) {
+            return `多元分佈 (最常見為 ${sorted[0][0]})`;
+        }
+        return sorted[0][0];
+    },
+
+    // NEW: Handles generating a marketing copy prompt for an exclusive offer
+    handleCreateCouponPrompt() {
+        const filteredMembers = this.getFilteredMembers();
+
+        if (filteredMembers.length === 0) {
+            this.showAlert("請先透過上方的篩選器定義出目標客群，再產生行銷文案提示。", "無法產生文案");
+            return;
+        }
+
+        // 1. Find top 5 common tags
+        const allTagIds = filteredMembers.flatMap(m => m.tagIds);
+        const tagCounts = allTagIds.reduce((acc, tagId) => {
+            acc[tagId] = (acc[tagId] || 0) + 1;
+            return acc;
+        }, {});
+
+        const topTags = Object.entries(tagCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5)
+            .map(([tagId, count]) => this.state.tags.find(t => t.id == tagId)?.name)
+            .filter(Boolean);
+
+        // 2. Find common demographics
+        const commonLocation = this.getMostCommonProperty(filteredMembers, 'location');
+        const commonAge = this.getMostCommonProperty(filteredMembers, 'ageGroup');
+        const commonStage = this.getMostCommonProperty(filteredMembers, 'parentingStage');
+        const commonProduct = this.getMostCommonProperty(filteredMembers, 'preferredProductLine');
+
+        // 3. Build the prompt HTML
+        let promptHtml = `
+            <div class='text-left text-sm' style='max-height: 55vh; overflow-y: auto; padding-right: 10px;'>
+                <p class='mb-3'>已根據您篩選的 <strong>${filteredMembers.length}</strong> 位顧客，產生以下行銷文案AI提示。您可以複製後，貼到您慣用的AI工具 (如ChatGPT, Gemini) 中產生文案。</p>
+                <div class='bg-slate-50 p-4 rounded-lg border border-slate-200' style='white-space: pre-wrap; font-family: "Noto Sans TC", sans-serif; line-height: 1.75;'>
+                    <strong class='text-teal-700 text-base'>📋 指令任務</strong><br>
+                    請你扮演一位資深的母嬰品牌行銷專家，我們的品牌是「逗寶」，專注於提供高品質、時尚的育兒精品。請你根據下方的顧客輪廓，設計一檔專屬優惠活動的行銷文案，目標是促使他們再次購買。<br><br>
+                    <strong class='text-teal-700 text-base'>🎯 顧客輪廓</strong><br>
+                    這群顧客是我們的寶貴逗粉，他們的主要共同特徵如下：<br>
+                    <ul style="list-style-type: disc; padding-left: 20px;">
+        `;
+        if (topTags.length > 0) {
+             promptHtml += `<li class='my-1'><strong>核心標籤：</strong>${topTags.join('、')}</li>`;
+        }
+        if (commonLocation) {
+             promptHtml += `<li class='my-1'><strong>主要地區：</strong>${commonLocation}</li>`;
+        }
+        if (commonAge) {
+             promptHtml += `<li class='my-1'><strong>主要年齡層：</strong>${commonAge}</li>`;
+        }
+        if (commonStage) {
+             promptHtml += `<li class='my-1'><strong>育兒階段：</strong>${commonStage}</li>`;
+        }
+         if (commonProduct) {
+             promptHtml += `<li class='my-1'><strong>關注產品線：</strong>${commonProduct}</li>`;
+        }
+
+        if (topTags.length === 0 && !commonLocation && !commonAge && !commonStage && !commonProduct) {
+            promptHtml += `<li>這是一群多元化的顧客，沒有非常顯著的共通特徵。</li>`;
+        }
+
+        promptHtml += `
+                    </ul><br>
+                    <strong class='text-teal-700 text-base'>✍️ 文案要求</strong><br>
+                    <ol style="list-style-type: decimal; padding-left: 20px;">
+                        <li class='my-1'><strong>標題：</strong>創造一個吸睛、有共鳴的標題。</li>
+                        <li class='my-1'><strong>優惠內容：</strong>設計一個專屬優惠 (例如：滿額折價券、特定商品組合優惠、免運券等)，並清晰說明。</li>
+                        <li class='my-1'><strong>文案風格：</strong>口吻溫暖、親切，能展現品牌對媽媽們的理解與支持。</li>
+                        <li class='my-1'><strong>格式：</strong>產生一篇適合發布在社群平台 (Facebook/Instagram) 的文案，約150-200字，並適度使用表情符號。</li>
+                    </ol>
+                </div>
+            </div>
+        `;
+
+        // 4. Show in modal
+        this.showAlert(promptHtml, "專屬優惠文案提示產生器");
+    },
+    
+    // --- NEW: Renders the Strategy Map Section ---
+    renderStrategyMap() {
+        const chartData = {
+            acquisition: {
+                label: '新客獲取',
+                data: [
+                    { x: 3, y: 2, r: 12, label: '社群內容導流', trigger: '用戶點擊特定貼文/廣告', channels: 'LINE OA, Messenger', goal: '引導至註冊頁' },
+                    { x: 5, y: 4, r: 16, label: '註冊歡迎旅程', trigger: '新用戶完成註冊', channels: 'Email, LINE', goal: '提供新人優惠，引導瀏覽' },
+                    { x: 8, y: 7, r: 20, label: '智慧廣告受眾投放', trigger: '模型識別潛力受眾', channels: 'Facebook/Google Ads', goal: '精準觸及，降低獲客成本' },
+                ],
+                backgroundColor: 'rgba(20, 184, 166, 0.7)',
+                borderColor: 'rgb(13, 148, 136)'
+            },
+            activation: {
+                label: '新客激活',
+                data: [
+                    { x: 4, y: 3, r: 12, label: '首購教學引導', trigger: '註冊後3天未首購', channels: 'Email', goal: '介紹核心產品，降低使用門檻' },
+                    { x: 6, y: 8, r: 20, label: '個人化商品推薦', trigger: '用戶瀏覽特定商品類別', channels: 'Email, 站內推播', goal: '根據瀏覽行為推薦，促成首購' },
+                    { x: 7, y: 5, r: 16, label: '購物車遺棄挽回 (新客)', trigger: '新客首次放棄購物車', channels: 'Email, LINE', goal: '完成首次轉換' }
+                ],
+                backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                borderColor: 'rgb(37, 99, 235)'
+            },
+            retention: {
+                label: '舊客經營',
+                data: [
+                    { x: 3, y: 4, r: 14, label: '個人化生日/紀念日關懷', trigger: '生日或註冊週年前7天', channels: 'Email, LINE, SMS', goal: '提升品牌好感度，發送專屬優惠' },
+                    { x: 5, y: 6, r: 18, label: '會員等級升/降級通知', trigger: '會員等級發生變化', channels: 'Email, App推播', goal: '溝通會員權益，激勵向上或防止流失' },
+                    { x: 8.2, y: 8, r: 22, label: '週期性回購提醒', trigger: '根據商品消耗週期預測', channels: 'Email, LINE', goal: '在顧客需要時主動提醒，提升回購' },
+                    { x: 6.5, y: 9, r: 24, label: 'AI動態個人化促銷', trigger: 'AI模型識別購買意願', channels: '全通路', goal: '對高潛力顧客提供專屬動態優惠' }
+                ],
+                backgroundColor: 'rgba(124, 58, 237, 0.7)',
+                borderColor: 'rgb(109, 40, 217)'
+            },
+            advocacy: {
+                label: '品牌擁護',
+                data: [
+                    { x: 4, y: 3.2, r: 14, label: '邀請評價與回饋', trigger: '完成購買後7天', channels: 'Email', goal: '收集用戶回饋，累積商品評價' },
+                    { x: 6, y: 5.2, r: 20, label: '會員推薦獎勵計畫 (MGM)', trigger: '手動邀請或高價值客戶自動觸發', channels: '專屬活動頁, Email, LINE', goal: '透過舊客帶來新客，降低獲客成本' },
+                    { x: 7.8, y: 7.2, r: 18, label: '超級用戶(Superuser)激勵', trigger: '識別高貢獻/高頻互動用戶', channels: 'Email, 專屬社群', goal: '給予獨家福利，建立品牌鐵粉' }
+                ],
+                backgroundColor: 'rgba(168, 85, 247, 0.7)',
+                borderColor: 'rgb(147, 51, 234)'
+            },
+            winback: {
+                label: '流失挽回',
+                data: [
+                    { x: 5.2, y: 4.2, r: 16, label: '沉睡客喚醒', trigger: '用戶超過N天未登入/購買', channels: 'Email, LINE', goal: '提供強力誘因，召回顧客' },
+                    { x: 8, y: 9, r: 24, label: '流失預警即時介入', trigger: '流失預測模型標記為高風險', channels: 'Email, SMS, 客服致電', goal: '在顧客流失前，主動提供關懷或解決方案' },
+                ],
+                backgroundColor: 'rgba(244, 63, 94, 0.7)',
+                borderColor: 'rgb(225, 29, 72)'
+            }
+        };
+
+        this.renderChart('strategyMapChart', 'bubble', 
+            {
+                // Combine all data stages into one datasets array
+                datasets: [
+                    chartData.acquisition,
+                    chartData.activation,
+                    chartData.retention,
+                    chartData.advocacy,
+                    chartData.winback
+                ]
+            },
+            {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            font: { size: 12, family: "'Noto Sans TC', sans-serif" },
+                            usePointStyle: true,
+                            padding: 20
+                        }
+                    },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        offset: 8,
+                        color: '#1f2937',
+                        font: { size: 11, weight: '500', family: "'Noto Sans TC', sans-serif" },
+                        formatter: (value) => value.label,
+                        display: 'auto'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: '#FFF',
+                        titleColor: '#333',
+                        titleFont: { size: 16, weight: 'bold' },
+                        bodyColor: '#555',
+                        bodyFont: { size: 12 },
+                        borderColor: 'rgba(0,0,0,0.1)',
+                        borderWidth: 1,
+                        padding: 15,
+                        callbacks: {
+                            title: (tooltipItems) => tooltipItems[0].raw.label,
+                            label: (context) => {
+                                const raw = context.raw;
+                                return [
+                                    `個人化程度: ${raw.y}`,
+                                    `自動化程度: ${raw.x}`,
+                                    `策略重要性: ${raw.r}`,
+                                    ``,
+                                    `觸發條件: ${raw.trigger}`,
+                                    `溝通通路: ${raw.channels}`,
+                                    `主要目標: ${raw.goal}`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: '自動化程度 (低 → 高)', font: { size: 12, weight: 'bold' } },
+                        min: 0, max: 10,
+                        grid: { color: 'rgba(200, 200, 200, 0.2)' }
+                    },
+                    y: {
+                        title: { display: true, text: '個人化程度 (低 → 高)', font: { size: 12, weight: 'bold' } },
+                        min: 0, max: 10,
+                        grid: { color: 'rgba(200, 200, 200, 0.2)' }
+                    }
+                },
+                elements: {
+                    point: {
+                        borderWidth: 2,
+                        hoverBorderWidth: 3
+                    }
+                }
+            }
+        );
+    },
+};
+
+// Initialize the application once the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', () => App.init());
+</script>
+
+</body>
+</html>
